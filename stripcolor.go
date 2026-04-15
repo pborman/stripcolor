@@ -1,11 +1,11 @@
 //   Copyright 2026 Paul Borman
-//   
+//
 //   Licensed under the Apache License, Version 2.0 (the "License");
 //   you may not use this file except in compliance with the License.
 //   You may obtain a copy of the License at
-//      
+//
 //       http://www.apache.org/licenses/LICENSE-2.0
-//      
+//
 //   Unless required by applicable law or agreed to in writing, software
 //   distributed under the License is distributed on an "AS IS" BASIS,
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,23 +26,30 @@ import (
 
 	"github.com/creack/pty/v2"
 	"github.com/pborman/ansi"
+	"github.com/pborman/options"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-const debug = false // set to true when debugging escape sequences
-var log *os.File    // where to log output when debug is true
+var log *os.File // where to log output when debug is true
+
+var opts = struct {
+	Debug string `getopt:"--debug=PATH Enable debug output to PATH"`
+	Login bool   `getopt:"--login Assume COMMAND is a login shell"`
+}{}
 
 func main() {
-	if debug {
+	options.SetParameters("COMMAND ...")
+	args := options.RegisterAndParse(&opts)
+	if opts.Debug != "" {
 		var err error
-		log, err = os.Create("log")
+		log, err = os.Create(opts.Debug)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 	}
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, "Usage: stripcolor COMMAND ...\n")
+	if len(args) < 1 {
+		options.PrintUsage(os.Stderr)
 		os.Exit(1)
 	}
 	ch := make(chan os.Signal)
@@ -59,7 +66,11 @@ func main() {
 		}()
 	}
 
-	tty, err := pty.StartWithSize(exec.Command(os.Args[1], os.Args[2:]...), ws)
+	cmd := exec.Command(args[0], args[1:]...)
+	if opts.Login {
+		cmd.Args[0] = "-" + cmd.Args[0]
+	}
+	tty, err := pty.StartWithSize(cmd, ws)
 	go func() {
 		for range ch {
 			pty.InheritSize(tty, os.Stdout)
@@ -74,7 +85,9 @@ func main() {
 			filter(buf[:r], os.Stdout)
 		}
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			if err != io.EOF {
+				fmt.Fprintln(os.Stderr, err)
+			}
 			return
 		}
 	}
@@ -195,7 +208,7 @@ func filter(buf []byte, w io.Writer) {
 		}
 
 		w.Write(used)
-		if !debug || s.Type == "" {
+		if log == nil || s.Type == "" {
 			continue
 		}
 
