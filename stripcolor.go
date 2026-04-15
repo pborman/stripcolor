@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/creack/pty/v2"
@@ -68,7 +69,7 @@ func main() {
 
 	cmd := exec.Command(args[0], args[1:]...)
 	if opts.Login {
-		cmd.Args[0] = "-" + cmd.Args[0]
+		cmd.Args[0] = "-" + filepath.Base(cmd.Args[0])
 	}
 	tty, err := pty.StartWithSize(cmd, ws)
 	go func() {
